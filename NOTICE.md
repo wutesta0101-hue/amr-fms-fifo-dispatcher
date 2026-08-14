@@ -1,6 +1,9 @@
 # NOTICE
 
-本專案（`amr-fms-fifo-dispatcher`）以 **Apache License 2.0** 釋出，條款見 [`LICENSE`](LICENSE)。
+**amr-fms-fifo-dispatcher**
+Copyright 2026 Testa Wu
+
+本專案以 **Apache License 2.0** 釋出，條款見 [`LICENSE`](LICENSE)。
 
 本檔案說明專案中**來自第三方、或衍生自第三方**的部分。
 列出這些不是形式：介面實作本來就必須沿用對方定義的形狀，把來源講清楚才分得出

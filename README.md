@@ -635,7 +635,7 @@ ros2 run fifo_dispatcher dispatcher --ros-args -p policy:=fifo -p count:=8 -p in
 
 ### 本專案
 
-以 **Apache License 2.0** 釋出，完整條款見 [`LICENSE`](LICENSE)。
+Copyright 2026 Testa Wu — 以 **Apache License 2.0** 釋出，完整條款見 [`LICENSE`](LICENSE)。
 
 選擇 Apache-2.0 的理由：**與 Open-RMF／ROS 2 生態系一致**，
 且本專案沒有任何 copyleft 相依，不需要更嚴格的授權。
