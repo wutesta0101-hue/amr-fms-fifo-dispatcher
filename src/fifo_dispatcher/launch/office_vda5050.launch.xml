@@ -1,0 +1,83 @@
+<?xml version='1.0' ?>
+
+<!-- M2 步驟 4：把 rmf_demos 的 fleet_manager 換成我們的 VDA5050 兩節點。
+
+     與原本的 rmf_demos_gz/office.launch.xml 的唯一差別：
+       ❌ 不啟動 fleet_manager
+       ✅ 改啟動 vda5050_bridge（HTTP 22011 ↔ MQTT）與兩台 vda5050_vehicle
+
+     關鍵在於「不 include fleet_adapter.launch.xml」——那個檔會連帶啟動
+     fleet_manager。改成自己以 <node> 啟動 fleet_adapter，參數照抄該檔。
+     依原則 11，rmf_demos 的原始碼一個字都沒改。
+
+     啟動：
+       ros2 launch fifo_dispatcher office_vda5050.launch.xml
+-->
+
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="ignition_version" default="6"/>
+  <!-- simulation.launch.xml 會用到 $(var headless) 卻沒有自己宣告，
+       原本靠兄弟 include 洩漏過來。這裡明確宣告，不依賴那個副作用。 -->
+  <arg name="headless" default="false"/>
+
+  <!-- ⚠️ 變數名刻意加 fleet_ 前綴：common.launch.xml 也有一個叫 config_file 的
+       參數（那是建物描述檔 office.building.yaml），而 include 的參數會洩漏回本作用域
+       （用 ros2 launch 的 show-args 選項可以看到）。
+       同名的話 fleet_adapter 會拿到錯的檔案。 -->
+  <let name="fleet_config_file"
+       value="$(find-pkg-share rmf_demos)/config/office/tinyRobot_config.yaml"/>
+  <let name="fleet_nav_graph_file"
+       value="$(find-pkg-share rmf_demos_maps)/maps/office/nav_graphs/0.yaml"/>
+
+  <!-- RMF 核心：traffic schedule、blockade、building map、視覺化（含 RViz）、
+       門與電梯 supervisor、task dispatcher、dashboard -->
+  <include file="$(find-pkg-share rmf_demos)/common.launch.xml">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="viz_config_file"
+         value="$(find-pkg-share rmf_demos)/include/office/office.rviz"/>
+    <arg name="config_file"
+         value="$(find-pkg-share rmf_demos_maps)/office/office.building.yaml"/>
+    <arg name="dashboard_config_file"
+         value="$(find-pkg-share rmf_demos_dashboard_resources)/office/dashboard_config.json"/>
+  </include>
+
+  <!-- fleet_adapter（參數抄自 rmf_demos_fleet_adapter/launch/fleet_adapter.launch.xml，
+       -sim 對應該檔 use_sim_time 為真的那一支） -->
+  <node pkg="rmf_demos_fleet_adapter" exec="fleet_adapter"
+        args="-c $(var fleet_config_file) -n $(var fleet_nav_graph_file) -sim"
+        output="both">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="server_uri" value=""/>
+  </node>
+
+  <!-- 我們的橋接：取代 fleet_manager，聽 config 裡的 127.0.0.1:22011。
+       它不是 ROS 節點（只講 HTTP 與 MQTT），所以用 <executable> 啟動。 -->
+  <executable
+      cmd="$(find-pkg-prefix fifo_dispatcher)/lib/fifo_dispatcher/vda5050_bridge -c $(var fleet_config_file)"
+      output="both"/>
+
+  <!-- 兩台車：一個行程服務一台，serial_number 就是車名。
+       use_sim_time 刻意維持 false——車輛的時間基準取自 /robot_state 自帶的
+       時間戳，不需要 /clock；若設為 true，節點會在 /clock 出現前不發 state。 -->
+  <node pkg="fifo_dispatcher" exec="vda5050_vehicle" name="vda5050_tinyRobot1"
+        output="both">
+    <param name="serial_number" value="tinyRobot1"/>
+    <param name="fleet_name" value="tinyRobot"/>
+    <param name="log_path" value="/tmp/vda5050_tinyRobot1.jsonl"/>
+  </node>
+
+  <node pkg="fifo_dispatcher" exec="vda5050_vehicle" name="vda5050_tinyRobot2"
+        output="both">
+    <param name="serial_number" value="tinyRobot2"/>
+    <param name="fleet_name" value="tinyRobot"/>
+    <param name="log_path" value="/tmp/vda5050_tinyRobot2.jsonl"/>
+  </node>
+
+  <!-- Gazebo 模擬（與原 office.launch.xml 相同） -->
+  <include file="$(find-pkg-share rmf_demos_gz)/simulation.launch.xml">
+    <arg name="map_name" value="office"/>
+    <arg name="ignition_version" value="$(var ignition_version)"/>
+  </include>
+
+</launch>
