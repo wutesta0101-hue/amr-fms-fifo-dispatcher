@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # 影子投標器（M3a）
 # 旁聽 Open-RMF 的派工過程，同時用 FIFO 算出「我會派哪一台」，
 # 兩者配對後寫成 JSON Lines。只訂閱、不發布，因此完全不影響現有系統運作。

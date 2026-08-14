@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # M2 步驟 5：**先跑 3 組**（rmf / fifo / nearest 各一輪），約 25 分鐘。
 #
 # 與 /tmp/m2_ra.sh（6 組、約 50 分鐘）的差別只有輪次：這裡固定 round=1。

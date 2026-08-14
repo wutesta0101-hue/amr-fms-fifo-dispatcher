@@ -15,13 +15,16 @@ Copyright 2026 Testa Wu
 
 ### `schemas/order.schema`、`schemas/state.schema`、`schemas/connection.schema`
 
-VDA5050 官方規範 **3.0.0** 的 JSON Schema，**未經修改**。
+VDA5050 官方 JSON Schema，**未經修改**——2026/08/14 以 sha256 逐位元比對上游確認相同。
 
-- 來源：<https://github.com/VDA5050/VDA5050>
+- 協定版本：VDA5050 **3.0**
+- 檔案來源：<https://github.com/VDA5050/VDA5050> 的 `json_schemas/`，
+  取自 `main` 分支 @ commit **`ea7c62a`**（2026-06-17，即 3.0.0 發布後的勘誤修訂）
 - 授權：**MIT License**
 - Copyright 2024 Verband der Automobilindustrie
 
-完整授權文字見 [`schemas/NOTICE.md`](schemas/NOTICE.md)（MIT 要求散布時保留）。
+**與 tag `3.0.0` 的差異、以及為何不影響本專案的結果**，見
+[`schemas/NOTICE.md`](schemas/NOTICE.md)（該檔同時包含 MIT 授權全文，散布時必須保留）。
 
 ---
 
@@ -65,15 +68,41 @@ VDA5050 官方規範 **3.0.0** 的 JSON Schema，**未經修改**。
 
 本專案在執行時相依下列套件，**它們的原始碼不包含在本 repo 內**：
 
+**直接相依**（版本為 2026/08/14 實測，見 [`requirements.txt`](requirements.txt)）：
+
+| 套件 | 實測版本 | 授權 | 查證來源 |
+|---|---|---|---|
+| `rclpy`、`builtin_interfaces` | Humble | Apache-2.0 | 本機 `/opt/ros/humble/share/<pkg>/package.xml` 的 `<license>` |
+| `rmf_task_msgs`、`rmf_fleet_msgs` | Humble | Apache-2.0 | 同上 |
+| FastAPI | 0.141.1 | MIT | `pip-licenses` + PyPI |
+| pydantic | 2.13.4 | MIT | 上游 `LICENSE`（Copyright 2017-present Pydantic Services Inc.） |
+| PyYAML | 6.0.3 | MIT | `pip-licenses` |
+| jsonschema | 4.26.0 | MIT | `pip-licenses` + PyPI |
+| uvicorn | 0.52.1 | BSD-3-Clause | `pip-licenses` + PyPI |
+| **paho-mqtt** | **1.5.1** | **EPL-1.0 / EDL-1.0**（雙授權） | `pip-licenses` |
+
+> ⚠️ **`paho-mqtt` 的授權隨版本而異**：本專案使用的 **1.5.1 是 EPL-1.0 / EDL-1.0**；
+> 該套件自 **2.x 起改為 EPL-2.0 OR BSD-3-Clause**。升級版本時要重新確認。
+> EPL 屬**弱 copyleft**——僅在修改該元件本身時觸發，單純呼叫不受影響。
+
+**遞移相依**（2026/08/14 以 `pip-licenses` 掃描，全部為寬鬆授權，**無 GPL／AGPL／未知**）：
+
 | 套件 | 授權 |
 |---|---|
-| ROS 2 Humble、Open-RMF | Apache-2.0 |
-| FastAPI、PyYAML、jsonschema | MIT |
-| uvicorn | BSD-3-Clause |
-| paho-mqtt | EPL-2.0 / EDL-1.0 |
+| starlette | BSD-3-Clause |
+| anyio、h11、annotated-types、pydantic-core、attrs、pyrsistent | MIT |
+| click、idna | BSD |
+| typing-extensions | PSF-2.0 |
 
-> 上表中經直接查證的是 VDA5050（MIT）與 `rmf_demos`（Apache-2.0，見上游 `LICENSE` 與檔案標頭）；
-> Python 套件的授權為一般認知，商業用途前請以 `pip-licenses` 實際確認完整相依樹。
+**外部服務／工具**（非相依套件，未散布，僅在執行環境中使用）：
+
+| 元件 | 授權 |
+|---|---|
+| Eclipse Mosquitto（MQTT broker） | EPL-2.0 + EDL-1.0（雙授權） |
+| Ignition Gazebo Fortress | Apache-2.0 |
+
+> 上表所有項目皆已直接查證，**含遞移相依**（2026/08/14 以 `pip-licenses` 掃描）。
+> 升級任何相依之後應重跑一次——`paho-mqtt` 從 1.x 到 2.x 就換過授權。
 
 ---
 

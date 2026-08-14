@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # 驗證「無 Gazebo 全鏈」：curl → bridge → MQTT order → vehicle → PathRequest
 #                        → 假 slotcar → /robot_state → vehicle → MQTT state → bridge
 # 這條鏈是 console 的資料來源，也是演示的 Plan A。

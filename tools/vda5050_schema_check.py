@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 """M2 步驟 2：VDA5050 訊息的 schema 一致性檢查
 
 用官方 schema 驗證「我們實際發出去的訊息」，不是驗證手寫的範例——

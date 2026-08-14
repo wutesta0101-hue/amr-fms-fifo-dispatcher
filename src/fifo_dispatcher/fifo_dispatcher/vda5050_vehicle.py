@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # M2 步驟 1：VDA5050 3.0 模擬車輛（車上軟體那一層）
 #
 # 北向：MQTT —— 訂閱 order、發布 state 與 connection

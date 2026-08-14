@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # 量測 VDA5050 鏈路自己引入了多少延遲。
 # 資料來源是兩端各自的 JSON Lines（都帶牆鐘 ts，可直接相減）：
 #   bridge : order_sent / cmd_completed

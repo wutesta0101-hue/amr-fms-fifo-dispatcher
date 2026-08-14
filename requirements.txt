@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
+#
+# 本專案的 Python 相依。版本為 2026/08/14 實測通過的版本。
+#
+# ⚠️ 這份不是完整的相依清單——ROS 2 的部分（rclpy、rmf_task_msgs、rmf_fleet_msgs、
+#    builtin_interfaces）由 ROS 環境提供，宣告在 src/fifo_dispatcher/package.xml，
+#    不能也不該用 pip 安裝。
+#
+# 安裝：
+#   /usr/bin/python3 -m pip install -r requirements.txt
+#
+# 授權：全部為寬鬆授權，明細見 NOTICE.md 第三節。
+
+# ── vda5050_bridge 需要，且沒有對應的 rosdep key ──────────────
+# （上游的 rmf_demos_fleet_adapter 也是以 pip 另裝，非本專案特有）
+fastapi>=0.100        # 實測 0.141.1  MIT
+uvicorn>=0.23         # 實測 0.52.1   BSD-3-Clause
+pydantic>=2.0         # 實測 2.13.4   MIT
+
+# ── 有 rosdep key，已宣告於 package.xml；列出供非 ROS 環境參考 ──
+paho-mqtt>=1.5        # 實測 1.5.1    EPL-1.0 / EDL-1.0（2.x 起改為 EPL-2.0 OR BSD-3-Clause）
+PyYAML>=5.4           # 實測 6.0.3    MIT
+
+# ── schema 驗證工具用；draft 2020-12 需要 >=4.18 ─────────────
+# 系統的 3.2.0 會靜靜退回 Draft7 驗證，結論會比實際情況更強。
+# 建議裝在隔離目錄，不要覆蓋系統版本：
+#   /usr/bin/python3 -m pip install --target ~/.pylibs/jsonschema2020 "jsonschema>=4.18"
+#   PYTHONPATH=~/.pylibs/jsonschema2020 /usr/bin/python3 tools/vda5050_schema_check.py state <檔案>
+jsonschema>=4.18      # 實測 4.26.0   MIT

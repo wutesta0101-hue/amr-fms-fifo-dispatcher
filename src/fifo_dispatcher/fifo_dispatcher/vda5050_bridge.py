@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # M2 步驟 3：VDA5050 橋接（廠商的車隊管理軟體那一層）
 #
 # 北向：HTTP —— 實作 rmf_demos 的五個端點，**被 RMF 的 fleet_adapter 呼叫**

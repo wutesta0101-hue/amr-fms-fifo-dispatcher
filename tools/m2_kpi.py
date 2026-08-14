@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # M2 步驟 5 的驗收分析：換掉廠商介面之後，KPI 有沒有劣化？
 #
 # 對照的是 M3b 的六組資料（notes/data/exp_*.jsonl，走 rmf_demos 的 fleet_manager）

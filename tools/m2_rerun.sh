@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # 補跑指定的幾組實驗（用於某組因故障 E 等原因作廢時）。
 #
 # 用法：bash /tmp/m2_rerun.sh fifo:1 rmf:2

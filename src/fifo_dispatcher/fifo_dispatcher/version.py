@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # 資料版本標記：回答「這批實驗資料是哪一版程式跑出來的」
 #
 # 每個會寫 JSON Lines 的元件在啟動時寫一行 run_started，帶上本模組算出的標記。

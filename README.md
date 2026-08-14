@@ -367,7 +367,8 @@ flowchart TB
 ## 七、什麼是 VDA5050，為什麼要接它
 
 **VDA5050 是德國汽車工業協會（VDA）與 VDMA 制定的「車隊管理系統 ↔ 移動機器人」通訊標準**，
-走 MQTT，訊息用 JSON。本專案採用 **3.0.0 版（2026-03 發布）**。
+走 MQTT，訊息用 JSON。本專案實作 **3.0 版**（協定版本 `3.0.0`，2026-03-18 發布）；
+schema 檔案採用官方 repo 發布後的勘誤修訂，詳見第八節。
 
 ### 它解決什麼問題
 
@@ -397,7 +398,13 @@ flowchart TB
 
 ## 八、官方 schema 格式
 
-`schemas/` 下的三個檔案是 VDA5050 3.0 的**官方 JSON Schema**（draft 2020-12），未經修改。
+`schemas/` 下的三個檔案是 VDA5050 3.0 的**官方 JSON Schema**（draft 2020-12），**未經修改**
+——已以 sha256 逐位元比對上游確認相同。
+
+> 檔案取自官方 repo 的 `main` 分支 @ `ea7c62a`（2026-06-17），
+> 那是 **3.0.0 發布後的勘誤修訂**（例如把 `theta` 的單位由誤植的 `m` 更正為 `rad`）。
+> 與 tag `3.0.0` 的完整差異、以及為何不影響本專案的驗證結果，見
+> [`schemas/NOTICE.md`](schemas/NOTICE.md)。
 
 | Topic | Schema | 頂層必要欄位 | 內容 |
 |---|---|---|---|
@@ -582,6 +589,19 @@ amr-fms-fifo-dispatcher/
     └── m2_kpi.py / m2_latency.py  KPI 與延遲分析
 ```
 
+### 前置：Python 相依
+
+`package.xml` 只宣告有 rosdep key 的相依（`rclpy`、`rmf_task_msgs`、`rmf_fleet_msgs`、
+`python3-yaml`、`python3-paho-mqtt`、`python3-jsonschema`）。
+`vda5050_bridge` 另外需要三個套件——**上游的 `rmf_demos_fleet_adapter` 也是以同樣方式另裝**：
+
+```bash
+/usr/bin/python3 -m pip install -r requirements.txt
+```
+
+> [`requirements.txt`](requirements.txt) 標註了每個套件的實測版本與授權，
+> 並說明哪些由 ROS 環境提供（**不該用 pip 裝**）。
+
 ### 建置
 
 ```bash
@@ -646,15 +666,19 @@ Copyright 2026 Testa Wu — 以 **Apache License 2.0** 釋出，完整條款見 
 
 | 元件 | 授權 | 說明 |
 |---|---|---|
-| **`schemas/*.schema`** | **MIT** | VDA5050 3.0.0 官方規範檔案，**未經修改**。著作權聲明與授權全文見 [`schemas/NOTICE.md`](schemas/NOTICE.md)——保留該檔是 MIT 的要求 |
+| **`schemas/*.schema`** | **MIT** | VDA5050 官方 schema（`main` @ `ea7c62a`），**未經修改**（sha256 比對確認）。著作權聲明與授權全文見 [`schemas/NOTICE.md`](schemas/NOTICE.md)——保留該檔是 MIT 的要求 |
 | **衍生自 `rmf_demos` 2.0.4** | Apache-2.0 | `vda5050_bridge` 沿用了上游定義的 **HTTP 端點形狀**、`office_vda5050.launch.xml` 沿用了 **launch 參數**。**未複製程式碼、未修改上游原始碼**。Copyright 2021 Open Source Robotics Foundation, Inc. |
-| ROS 2 Humble、Open-RMF | Apache-2.0 | 執行時相依，原始碼不含在本 repo |
-| FastAPI、PyYAML、jsonschema | MIT | |
+| ROS 2 Humble（`rclpy`、`builtin_interfaces`）、Open-RMF（`rmf_task_msgs`、`rmf_fleet_msgs`） | Apache-2.0 | 執行時相依，原始碼不含在本 repo |
+| FastAPI、pydantic、PyYAML、jsonschema | MIT | 版本見 [`requirements.txt`](requirements.txt) |
 | uvicorn | BSD-3-Clause | |
-| paho-mqtt | EPL-2.0 / EDL-1.0 | |
+| paho-mqtt **1.5.1** | **EPL-1.0 / EDL-1.0**（雙授權） | ⚠️ 授權隨版本而異：2.x 起改為 EPL-2.0 OR BSD-3-Clause |
+| 遞移相依（starlette、anyio、click…） | MIT／BSD／PSF | `pip-licenses` 掃描：**無 GPL／AGPL／未知授權** |
+| Eclipse Mosquitto（MQTT broker） | EPL-2.0 + EDL-1.0 | **外部服務**，非相依套件、未散布 |
+| Ignition Gazebo Fortress | Apache-2.0 | **外部工具**，同上 |
 
-> ⚠️ 經直接查證的是 **VDA5050（MIT）** 與 **`rmf_demos`（Apache-2.0）**；
-> Python 套件的授權為一般認知。商業用途前請以 `pip-licenses` 實際確認完整相依樹。
+> 上表所有項目皆於 2026/08/14 直接查證：ROS／Open-RMF 取自本機安裝的 `package.xml`
+> `<license>` 欄位，Python 套件取自 PyPI 的授權欄位，VDA5050 與 Mosquitto 取自其官方授權檔。
+> 商業用途前仍建議以 `pip-licenses` 確認完整的遞移相依樹。
 
 ### 聲明
 

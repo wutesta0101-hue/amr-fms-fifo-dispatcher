@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # M3b 上位系統派工器
 #
 # 角色：FMS/WCS 上位系統——只決定「派哪台車」，不負責機器人怎麼走。

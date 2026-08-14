@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # 徹底清除所有 RMF / Gazebo / 實驗相關行程。
 # 起因：原本的 pkill -f "rmf_" 沒有殺掉 rmf_demos_fleet_adapter，
 #       導致每跑一組就殘留一個 adapter，多個 adapter 同時控制同一批車輛而衝突。

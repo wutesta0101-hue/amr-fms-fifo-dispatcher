@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # 測試替身：假的 Gazebo slotcar（**只用於測試，不是交付元件**）
 #
 # 存在的理由：驗證 bridge → vehicle → 車 → state → bridge 這一整圈，

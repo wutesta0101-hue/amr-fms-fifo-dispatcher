@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 # M2 步驟 5：單組對照實驗（VDA5050 版）
 #
 # 與 M3b 的 /tmp/rg.sh 只有一個差異：**啟動 office_vda5050.launch.xml**

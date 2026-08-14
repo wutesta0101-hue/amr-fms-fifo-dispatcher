@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Testa Wu
 from setuptools import setup
 
 package_name = 'fifo_dispatcher'
