@@ -116,7 +116,7 @@ FIFO 刻意只取閒置最久的車，不看距離、電量、壅塞，讓「近
 | nearest | 派工器 | 同上 | `robot_task_request` | ❌ |
 | rmf | RMF | 任務一產生就送出，排進未來行程 | `dispatch_task_request` | ✅ |
 
-fifo 與 nearest 都是延遲承諾；rmf 是立即承諾。實測 KPI 差異主要來自這條軸線，而不是搜尋能力。這也解釋了 RMF 平均周轉好、尾端（最大值）卻最差——早期綁定基於當時預測，後續改不了。
+fifo 與 nearest 都是延遲承諾；rmf 是立即承諾。實測 KPI 差異主要來自這條軸線，而不是搜尋能力。實測上 RMF 平均周轉較好，但尾端（最大值）較差——早期綁定基於當時預測，後續難以調整。
 
 完成判定：`orderId = str(cmd_id)`、`nodeId = f"cmd_{cmd_id}"`。車輛抵達後把 `nodeId` 填進 `state.lastNodeId` 即為完成證據。
 
@@ -156,7 +156,7 @@ DDS 不適合跨雲端（假設在受信任封閉區網），這也是 VDA5050 �
 | 框架專屬介面 | 看得見的 ROS topic，但只在 RMF 生態有意義 | `task_api_requests`、`bid_notice` |
 | 無介面（封裝） | 在別人行程內部，外面收不到 | 成本計算、路徑規劃、充電決策 |
 
-VDA5050 是**車輛介面**，不是派工介面。派工走 ROS。正確堆疊是：
+VDA5050 是**車輛介面**，不是派工介面。派工走 ROS。常見的對應關係是：
 
 ```
 語意層  VDA5050 schema / rmf_*_msgs / HTTP JSON
@@ -180,19 +180,23 @@ Open-RMF 是系統，不是介面。
 
 ### 行為涵蓋
 
-把 VDA5050 schema、Open-RMF ROS 訊息、`rmf_api_msgs` 的 49 個 API schema 比對後，這條鏈上可辨識行為共 98 種：
+把 VDA5050 schema、Open-RMF ROS 訊息、`rmf_api_msgs` 的 43 個 API schema 比對後，這條鏈上可辨識行為共 97 種：
 
 | 歸屬 | 全部 | 已做 | 部分 | 未做／委派 |
 |---|---:|---:|---:|---:|
 | 車輛 | 26 | 8 | 3 | 15 |
-| 任務 | 23 | 5 | 3 | 15 |
+| 任務 | 22 | 5 | 3 | 14 |
 | 交通與資源 | 14 | 0 | 1 | 13 |
 | 生命週期與健康 | 11 | 0 | 0 | 11 |
-| 人工介入與緊急 | 9 | 2 | 0 | 7 |
+| 人工介入與緊急 | 9 | 1 | 1 | 7 |
 | 觀測與治理 | 6 | 4 | 0 | 2 |
 | 能源 | 5 | 2 | 0 | 3 |
 | 連線與異常 | 4 | 4 | 0 | 0 |
-| **合計** | **98** | **25** | **8** | **65** |
+| **合計** | **97** | **24** | **8** | **65** |
+
+> **分類規則**：實作狀態有但書的一律算「部分」（例如 teleop 切換已實作，但擋不掉
+> fleet adapter 主動發的新指令）。「未做／委派」把「刻意委派給 RMF」與「規範有但沒做」
+> 併在一起——兩者性質不同，區分見 `notes/` 的行為主表。
 
 未做的 65 種大多是刻意委派給 RMF（路徑、交通、門電梯、任務生命週期），少數是規範完整範圍（29 個預定義動作、8 個 topic 中的 5 個）。單一廠商也很少全做。
 
@@ -256,15 +260,32 @@ VDA5050 是德國汽車工業協會（VDA）與 VDMA 制定的「車隊管理系
 
 ## 八、官方 schema
 
-`schemas/` 下三個檔案是 VDA5050 3.0 官方 JSON Schema（draft 2020-12），未經修改，已用 sha256 與上游比對確認相同。
+`schemas/` 下**八個**檔案是 VDA5050 3.0 官方 JSON Schema（draft 2020-12），未經修改，已逐份與上游比對確認位元相同。
 
 取自官方 repo `main` @ `ea7c62a`（2026-06-17），是 3.0.0 發布後的勘誤修訂（例如把 `theta` 單位由誤植的 `m` 更正為 `rad`）。與 tag `3.0.0` 的差異見 [`schemas/NOTICE.md`](schemas/NOTICE.md)。
 
-| Topic | Schema | 頂層必要欄位 |
-|---|---|---|
-| `.../order` | `order.schema` | 9（含 `headerId`, `timestamp`, `version`, `manufacturer`, `serialNumber`, `orderId`, `orderUpdateId`, `nodes`, `edges`） |
-| `.../state` | `state.schema` | 18（前 7 項 + `lastNodeId`, `lastNodeSequenceId`, `nodeStates`, `edgeStates`, `driving`, `actionStates`, `instantActionStates`, `powerSupply`, `operatingMode`, `errors`, `safetyState`） |
-| `.../connection` | `connection.schema` | 6（前 5 項 + `connectionState`） |
+前三個是本專案實作的；後五個一併保留，方便對照官方欄位定義。
+
+| Topic | Schema | 頂層必要欄位 | 本專案 |
+|---|---|---|---|
+| `.../order` | `order.schema` | 9（含 `headerId`, `timestamp`, `version`, `manufacturer`, `serialNumber`, `orderId`, `orderUpdateId`, `nodes`, `edges`） | ✅ |
+| `.../state` | `state.schema` | 18（前 7 項 + `lastNodeId`, `lastNodeSequenceId`, `nodeStates`, `edgeStates`, `driving`, `actionStates`, `instantActionStates`, `powerSupply`, `operatingMode`, `errors`, `safetyState`） | ✅ |
+| `.../connection` | `connection.schema` | 6（前 5 項 + `connectionState`） | ✅ |
+| `.../instantActions` | `instantActions.schema` | 6 | ❌ |
+| `.../factsheet` | `factsheet.schema` | 11 | ❌ |
+| `.../visualization` | `visualization.schema` | 6 | ❌ |
+| `.../responses` | `responses.schema` | 6 | ❌ |
+| `.../zoneSet` | `zoneSet.schema` | 6 | ❌ |
+
+> 頂層必要欄位數量可直接用以下指令確認：
+>
+> ```bash
+> python3 -c "
+> import json,glob,os
+> for p in sorted(glob.glob('schemas/*.schema')):
+>     print(os.path.basename(p), len(json.load(open(p,encoding='utf-8'))['required']))
+> "
+> ```
 
 Topic 命名：`vda5050/v3/<manufacturer>/<serialNumber>/{order,state,connection}`
 
@@ -317,7 +338,7 @@ Topic 命名：`vda5050/v3/<manufacturer>/<serialNumber>/{order,state,connection
 | 等待時間 | `nearest ≪ rmf < fifo` |
 | 尾端（最大） | `nearest ≪ fifo < rmf` |
 
-RMF 用尾端換平均；FIFO 的價值是公平性與決策時間有界，不是效率。
+RMF 傾向用尾端表現換取較好的平均周轉；FIFO 較重視公平性與決策時間有界。
 
 ---
 
@@ -371,7 +392,7 @@ bash tools/verify_chain.sh
 
 ### 5. KPI 判準
 
-差距要能宣稱，必須大於同一策略的跨輪變異。只跑一輪時，`rmf` 平均周轉曾顯示「+11.3 s、超出雜訊」；補跑第二輪後，自身跨輪變異約 8.0 s，同一個差距落回雜訊內。單輪「超出雜訊」不能當結論。
+差距要能宣稱，必須大於同一策略的跨輪變異。只跑一輪時，`rmf` 平均周轉曾顯示「+11.3 s、超出雜訊」；補跑第二輪後，自身跨輪變異約 8.0 s，同一個差距落回雜訊內。因此單輪出現「超出雜訊」時，還不宜直接下結論。
 
 ### 6. 故障診斷
 
@@ -477,7 +498,7 @@ Copyright 2026 Testa Wu — Apache License 2.0，完整條款見 [`LICENSE`](LIC
 
 | 元件 | 授權 | 說明 |
 |---|---|---|
-| `schemas/*.schema` | MIT | VDA5050 官方 schema（`main` @ `ea7c62a`），未經修改。著作權與授權全文見 [`schemas/NOTICE.md`](schemas/NOTICE.md) |
+| `schemas/*.schema` | MIT | VDA5050 官方 schema **8 份**（`main` @ `ea7c62a`），未經修改。著作權、授權全文與各份差異見 [`schemas/NOTICE.md`](schemas/NOTICE.md) |
 | 衍生自 `rmf_demos` 2.0.4 | Apache-2.0 | `vda5050_bridge` 沿用 HTTP 端點形狀、`office_vda5050.launch.xml` 沿用 launch 參數。未複製程式碼、未修改上游原始碼。Copyright 2021 Open Source Robotics Foundation, Inc. |
 | ROS 2 Humble、Open-RMF | Apache-2.0 | 執行時相依，原始碼不含在本 repo |
 | FastAPI、pydantic、PyYAML、jsonschema | MIT | 版本見 [`requirements.txt`](requirements.txt) |

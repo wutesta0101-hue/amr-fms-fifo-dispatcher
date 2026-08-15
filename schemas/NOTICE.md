@@ -1,41 +1,29 @@
 # 第三方檔案聲明
 
-本目錄下的三個 schema 檔案**不是本專案的著作**，取自 VDA5050 官方規範，**未經任何修改**：
+本目錄下的 schema 檔案取自 VDA5050 官方規範，**未經修改**，不是本專案的著作。
 
-| 檔案 | 內容 |
-|---|---|
-| `order.schema` | VDA5050 `order` 訊息的 JSON Schema |
-| `state.schema` | VDA5050 `state` 訊息的 JSON Schema |
-| `connection.schema` | VDA5050 `connection` 訊息的 JSON Schema |
-
-- **協定版本**：VDA5050 **3.0**（訊息的 `version` 欄位填 `3.0.0`）
-- **檔案來源**：<https://github.com/VDA5050/VDA5050> 的 `json_schemas/`
-- **取自分支**：`main` @ commit **`ea7c62a`**（2026-06-17）
-- **Schema 版本宣告**：`https://json-schema.org/draft/2020-12/schema`
-- **授權**：MIT License
-
-保留這份聲明是 MIT 授權的要求——散布時必須附上原始的著作權聲明與授權全文。
-
-### ⚠️ 為什麼是 `main` 而不是 tag `3.0.0`
-
-**這三個檔案與 tag `3.0.0` 並非位元相同**（2026/08/14 逐位元比對確認）。
-`main` 是 3.0.0 發布（2026-03-18）之後的**勘誤修訂**，差異如下：
-
-| 檔案 | `main` 相對於 tag `3.0.0` 的差異 | 對本專案的影響 |
+| 檔案 | 內容 | 本專案是否實作 |
 |---|---|---|
-| `order.schema` | `nodePosition.theta` 的 `unit` 由 `"m"` **更正為 `"rad"`**（3.0.0 把角度單位誤寫成公尺） | 無——`unit` 是註解性關鍵字，不參與驗證 |
-| `order.schema` | `orientationType` 新增 `enum: [GLOBAL, TANGENTIAL]` 限制 | 無——本專案不送 edge 的 orientationType |
-| `state.schema` | 描述文字的空白修正；移除 controlPoint `weight` 的 `exclusiveMinimum` | 無——本專案不送 trajectory |
-| `connection.schema` | 描述文字由 `CONNECTIONBROKEN`／`DISCONNECTED` 更正為 `CONNECTION_BROKEN`／`OFFLINE`，與其 enum 一致 | 無——**兩版的 enum 本身完全相同** |
+| `order.schema` | order 訊息 | ✅ |
+| `state.schema` | state 訊息 | ✅ |
+| `connection.schema` | connection 訊息 | ✅ |
+| `instantActions.schema` | instantActions 訊息 | ❌ |
+| `factsheet.schema` | factsheet 訊息 | ❌ |
+| `visualization.schema` | visualization 訊息 | ❌ |
+| `responses.schema` | responses 訊息 | ❌ |
+| `zoneSet.schema` | zoneSet 訊息 | ❌ |
 
-**結論：改用 tag `3.0.0` 的檔案重驗，本專案的訊息會得到相同結果**
-（差異全部落在註解性關鍵字，或落在本專案未使用的欄位上）。
-選用 `main` 是因為它修正了 3.0.0 的已知錯誤。
+未實作的五份一併保留，方便對照官方欄位定義。
 
-> 上游 repo 自身的免責聲明（VDA5050 README）：
-> *"Use of this GitHub repository and all content, information, and support services
-> offered therein is at your own risk."*
-> 該 repo 未對名稱使用、符合性宣稱或 schema 再散布設定 MIT 以外的額外條件（2026/08/14 查證）。
+- 協定版本：VDA5050 3.0（`version` 欄位填 `3.0.0`）
+- 來源：https://github.com/VDA5050/VDA5050 的 `json_schemas/`
+- 取自：`main` @ commit `ea7c62a`（2026-06-17）
+- Schema 宣告：`https://json-schema.org/draft/2020-12/schema`
+- 授權：MIT License
+
+選用 `main` 而非 tag `3.0.0`，是因為 tag 中的 `factsheet.schema` 與 `visualization.schema` 含有多餘逗號，無法被 `json.load()` 解析；`main` 為發布後的勘誤修訂。其餘差異多為描述文字或未使用欄位，不影響本專案已實作訊息的驗證結果。八份檔案皆已與上游 blob 雜湊比對確認一致。
+
+保留本聲明是 MIT 授權的要求——散布時須附上原始著作權聲明與授權全文。
 
 ---
 
@@ -63,6 +51,4 @@ SOFTWARE.
 
 ---
 
-> 本專案與 VDA（Verband der Automobilindustrie）、VDMA 均無隸屬關係。
-> 使用這些 schema 的目的，是讓「我們發出的訊息符合規範」這件事**可被執行驗證**，
-> 而不是口頭宣稱——驗證方式見 repo 根目錄 `README.md` 第十節。
+本專案與 VDA、VDMA 無隸屬關係。使用這些 schema 是為了讓訊息合規性可被實際驗證，驗證方式見根目錄 `README.md`。
