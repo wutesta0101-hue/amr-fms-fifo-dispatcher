@@ -4,6 +4,10 @@
 notes/
 開發步驟/
 
+# 圖檔的中途版本（GIF 剪輯過程的半成品，約 113 MB）
+# docs/ 本身要進 repo（README 的圖片來源），只排除 old/
+docs/old/
+
 # 若日後把 git repo 根目錄上移到專案母資料夾，以下也會生效
 documentation/
 編碼原則/

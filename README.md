@@ -3,6 +3,24 @@
 **AMR 車隊管理（FMS／WCS）上位系統練習：把自寫的派工器接進 Open-RMF，
 並用 VDA5050 3.0 取代廠商私有 API，量測「換掉介面之後 KPI 有沒有劣化」。**
 
+![FIFO 派工決策的實際運作：近的車閒著，FIFO 派了遠的那台](docs/gif動畫.gif)
+
+**這段動畫就是整個專案的縮影**——`coe` 這個任務進來時，
+近的車（`tinyRobot1`，距離 5.1 m）正閒著，
+但 FIFO 只看「誰先排隊」，於是派了 **0.5 秒前就閒置**的 `tinyRobot2`（距離 15.1 m）。
+
+代價當場量出來：**多走 10.0 公尺、周轉 67.6 秒**——而另外兩趟只要 32 秒。
+
+| 畫面位置 | 內容 | 誰寫的 |
+|---|---|---|
+| **左**：RViz | RMF 的執行——路徑規劃、交通協商、開門。綠色是規劃軌跡 | Open-RMF |
+| **右上**：派工決策 log | `指派 coe → tinyRobot2｜閒置最久（0.5s）`，以及完成時的周轉時間 | **我** |
+| **右中**：MQTT 訊息流 | **VDA5050 3.0** 的 `state`／`order` 原始訊息（業界標準介面） | **我** |
+| **右下**：橋接事件 | `order_sent` / `cmd_completed`，HTTP ↔ MQTT 的翻譯結果 | **我** |
+
+> 「派了比較遠的車」不是 bug，是 FIFO 的定義。
+> **重點是這個代價被量了下來**——`dist_penalty` 欄位就是為此存在的。
+
 環境：WSL2 / Ubuntu 22.04 / ROS 2 Humble / Open-RMF `rmf_demos` 2.0.4 / Ignition Fortress
 
 ---
@@ -73,66 +91,7 @@
 
 ## 三、全域架構圖
 
-```mermaid
-flowchart TB
-    subgraph UP["上游：業務系統（本專案未實作）"]
-        ERP["ERP / WMS / WES<br/>訂單・庫存・波次"]
-    end
-
-    subgraph MID["中游：車隊管理 FMS / WCS / RCS　★本專案在這裡★"]
-        DISP["dispatcher.py<br/>決定派哪台車<br/>fifo / nearest / rmf"]
-        SHADOW["shadow_bidder.py<br/>影子投標器<br/>只記錄不發布"]
-        RMFT["rmf_task_dispatcher<br/>投標主持人"]
-        TRAF["rmf_traffic_schedule<br/>交通協商・路權"]
-        ADAP["fleet_adapter<br/>路徑規劃・開門・充電"]
-        BRIDGE["vda5050_bridge<br/>HTTP :22011 ↔ MQTT"]
-        FAC["門・電梯・充電站<br/>door / lift / charging"]
-    end
-
-    subgraph DOWN["下游：機器人本體"]
-        VEH["vda5050_vehicle<br/>MQTT ↔ ROS"]
-        SLOT["slotcar<br/>導航・馬達・局部避障"]
-    end
-
-    ERP -. "REST / gRPC<br/>無統一控制標準" .-> DISP
-
-    DISP -- "task_api_requests<br/>robot_task_request" --> RMFT
-    RMFT -- "rmf_task/bid_notice" --> ADAP
-    ADAP -- "rmf_task/bid_response" --> RMFT
-    RMFT -. "旁聽" .-> SHADOW
-    RMFT -- "rmf_task/dispatch_request" --> ADAP
-
-    ADAP <-- "路權協商<br/>mutex_group / lane_closure" --> TRAF
-    ADAP -- "door_requests / lift_requests<br/>charging_assignments" --> FAC
-
-    ADAP -- "HTTP<br/>status / navigate / stop" --> BRIDGE
-    BRIDGE -- "★ VDA5050 over MQTT ★<br/>order" --> VEH
-    VEH -- "★ VDA5050 ★<br/>state / connection" --> BRIDGE
-
-    VEH -- "robot_path_requests" --> SLOT
-    SLOT -- "robot_state" --> VEH
-
-    ADAP -- "fleet_states" --> DISP
-
-    classDef base  fill:#FFFFFF,stroke:#B4BAC1,stroke-width:1px,color:#15191E
-    classDef soft  fill:#F4F5F6,stroke:#B4BAC1,stroke-width:1px,color:#15191E
-    classDef pivot fill:#DFE2E5,stroke:#69707A,stroke-width:1.6px,color:#15191E
-    classDef star  fill:#FFFFFF,stroke:#15191E,stroke-width:2.6px,color:#15191E
-    classDef out   fill:#EAECEE,stroke:#3A4048,stroke-width:2px,color:#15191E
-
-    class ERP soft
-    class DISP,SHADOW,BRIDGE,VEH star
-    class RMFT,TRAF pivot
-    class ADAP base
-    class FAC soft
-    class SLOT out
-
-    style UP fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-    style MID fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-    style DOWN fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-
-    linkStyle default stroke:#8B9199,stroke-width:1.4px
-```
+![全域架構圖：上中下游三層與各自的介面](docs/架構圖.png)
 
 > **粗黑框 = 自己寫的四個元件**；**深灰底 = 決策樞紐**。
 > `vda5050_bridge` 取代了 `rmf_demos` 原本的 `fleet_manager`（模擬廠商私有 API）——
@@ -143,62 +102,7 @@ flowchart TB
 上圖畫的是「組態 B」（走 VDA5050）。實際上這條鏈只有**兩個地方可以插拔**，
 而 M1 的原生鏈與 M2 的 VDA5050 鏈**在同一個 port 上二選一**：
 
-```mermaid
-flowchart TB
-    subgraph N["北向接縫：上位系統插入點"]
-        DISP["dispatcher.py　M3b<br/>決定派哪台車"]
-        SHADOW["shadow_bidder.py　M3a<br/>旁聽投標・只記錄"]
-    end
-
-    subgraph SPINE["共用骨幹　M1（兩種組態都一樣）"]
-        RMFT["rmf_task_dispatcher"]
-        TRAF["rmf_traffic_schedule<br/>交通協商・路權"]
-        ADAP["fleet_adapter<br/>路徑規劃・開門・充電"]
-    end
-
-    MGR["組態 A｜fleet_manager<br/>M1 原生・模擬廠商私有 API"]
-
-    subgraph M2BLK["組態 B｜M2：VDA5050 鏈（自寫，取代 fleet_manager）"]
-        BRIDGE["vda5050_bridge<br/>HTTP :22011 ↔ MQTT"]
-        VEH["vda5050_vehicle<br/>VDA5050 3.0"]
-    end
-
-    SLOT["Gazebo slotcar　M1<br/>★ 匯合點 ★"]
-
-    DISP -- "task_api_requests" --> RMFT
-    RMFT -. "bid_notice / bid_response" .-> SHADOW
-    RMFT --> ADAP
-    ADAP <--> TRAF
-
-    ADAP -- "★ 南向接縫 :22011 ★<br/>二選一" --> MGR
-    ADAP -- "★ 南向接縫 :22011 ★<br/>二選一" --> BRIDGE
-    BRIDGE -- "MQTT order / state" --> VEH
-
-    MGR -- "robot_path_requests" --> SLOT
-    VEH  -- "robot_path_requests" --> SLOT
-    SLOT -- "robot_state" --> MGR
-    SLOT -- "robot_state" --> VEH
-
-    ADAP -- "fleet_states" --> DISP
-
-    classDef base  fill:#FFFFFF,stroke:#B4BAC1,stroke-width:1px,color:#15191E
-    classDef soft  fill:#F4F5F6,stroke:#B4BAC1,stroke-width:1px,color:#15191E
-    classDef pivot fill:#DFE2E5,stroke:#69707A,stroke-width:1.6px,color:#15191E
-    classDef star  fill:#FFFFFF,stroke:#15191E,stroke-width:2.6px,color:#15191E
-    classDef out   fill:#EAECEE,stroke:#3A4048,stroke-width:2px,color:#15191E
-
-    class DISP,SHADOW,BRIDGE,VEH star
-    class RMFT,ADAP base
-    class TRAF pivot
-    class MGR soft
-    class SLOT out
-
-    style N fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-    style SPINE fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-    style M2BLK fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-
-    linkStyle default stroke:#8B9199,stroke-width:1.4px
-```
+![串接圖：M1／M2／M3 的兩個接縫與一個匯合點](docs/串接圖.png)
 
 **這個結構就是實驗設計本身：**
 
@@ -225,35 +129,27 @@ flowchart TB
 
 ## 四、一次派工的時序圖
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant D as dispatcher.py
-    participant R as RMF core
-    participant A as fleet_adapter
-    participant B as vda5050_bridge
-    participant V as vda5050_vehicle
-    participant G as slotcar / Gazebo
+![時序圖：一次派工從決策到完成的完整訊息流](docs/時序圖.png)
 
-    D->>D: 產生任務・依策略選車
-    Note over D: ★ 決策點 ★<br/>fifo：閒置最久<br/>nearest：距離最近
-    D->>R: task_api_requests<br/>robot_task_request（指定車）
-    R->>A: dispatch_request
-    A->>A: 路徑規劃・交通協商・開門
-    loop 每一段路徑
-        A->>B: HTTP POST navigate?cmd_id=N
-        B->>V: MQTT order（orderId = cmd_id）
-        V->>G: robot_path_requests
-        G->>V: robot_state（位置・電量）
-        V->>B: MQTT state（mobileRobotPosition・lastNodeId）
-        A->>B: HTTP GET status
-        B-->>A: 位置・電量・last_completed_request・replan
-    end
-    A->>D: fleet_states（task_id 轉換 = 開始／完成）
-    D->>D: 寫入 JSON Lines：決策理由・等待・周轉
-```
+### ★ 三種策略的差別不在「怎麼選」，而在「什麼時候選」
 
-**兩個關鍵設計**
+上圖分成兩條分支（`fifo / nearest` 與 `rmf`），差別是本專案最重要的一個發現——
+**決策點落在不同的地方**：
+
+| | 決策者 | 決策時機 | 訊息型別 | 經過投標？ |
+|---|---|---|---|---|
+| **fifo** | 我的派工器 | **等車真的空出來**才綁定 | `robot_task_request` | ❌ |
+| **nearest** | 我的派工器 | 同上 | `robot_task_request` | ❌ |
+| **rmf** | RMF | **任務一產生就送出**，由 RMF 排進車輛的未來行程 | `dispatch_task_request` | ✅ |
+
+`fifo` 與 `nearest` 的差別只是選擇規則（閒置最久 vs 距離最近），**兩者都是延遲承諾**；
+`rmf` 則是**立即承諾**——它在資訊最少的時候就把任務綁定到車上，換取前瞻排程的效益。
+
+> **實測顯示，三者的 KPI 差異主要來自這條「承諾時機」的軸線，而不是搜尋能力強弱。**
+> 這也解釋了為什麼 RMF 的平均周轉很好、尾端（最大值）卻最差——
+> 早期綁定的決策基於當時的預測，後續改不了。
+
+**另外兩個關鍵設計**
 
 - **完成的判定**：`orderId = str(cmd_id)`、`nodeId = f"cmd_{cmd_id}"`。
   車輛抵達後把 `nodeId` 填進 state 的 `lastNodeId`，那就是「這個 cmd 完成了」的證據。
@@ -264,33 +160,7 @@ sequenceDiagram
 
 ## 五、容器拓樸與 port
 
-```mermaid
-flowchart TB
-    subgraph WIN["Windows 11 主機"]
-        subgraph WSL["WSL2 / Ubuntu 22.04"]
-            P["約 20 個原生行程<br/>DDS 自動探索・無中央伺服器"]
-            MQ["Mosquitto broker<br/>:1883"]
-            BR["vda5050_bridge<br/>:22011"]
-            P --- MQ
-            P --- BR
-        end
-        GPU["RTX 3080<br/>經 /dev/dxg 透通"]
-        WSLG["WSLg　DISPLAY=:0"]
-    end
-
-    WSL -.-> GPU
-    WSL -.-> WSLG
-
-    classDef base fill:#FFFFFF,stroke:#B4BAC1,stroke-width:1px,color:#15191E
-    classDef star fill:#FFFFFF,stroke:#15191E,stroke-width:2.6px,color:#15191E
-    classDef out  fill:#EAECEE,stroke:#3A4048,stroke-width:2px,color:#15191E
-    class P base
-    class MQ,BR star
-    class GPU,WSLG out
-    style WIN fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-    style WSL fill:#FCFCFD,stroke:#D6D9DD,stroke-width:1px,color:#5A616B
-    linkStyle default stroke:#8B9199,stroke-width:1.4px
-```
+![容器拓樸：WSL2 內的原生行程與對外的 port](docs/拓樸圖.png)
 
 **目前沒有任何容器。** 全部是 WSL 裡的原生行程，靠 DDS 自動探索互相找到對方
 ——所以**不需要配置任何 IP**。下表的 port 是 HTTP／MQTT 服務，不是 DDS 用的。
@@ -308,6 +178,14 @@ flowchart TB
 
 ## 六、上中下游、指派行為、車輛行為
 
+**看任何一個行為，問三句就好**：
+
+```
+① 誰做？           → 上游 / 中游 / 下游
+② 有沒有訊息跑出來？ → 有＝有介面，看得到；沒有＝封裝在別人內部
+③ 我做了嗎？        → 做了 / 委派 / 沒做
+```
+
 ### 標準出現在介面上，不在層內部
 
 | 介面 | 標準狀況 |
@@ -316,16 +194,106 @@ flowchart TB
 | **中游 ↔ 下游** | ✅ **VDA5050** |
 | 中游內部（RMF） | Open-RMF 的 fleet adapter 介面（框架專屬，非業界標準） |
 
-### 四類行為
+> ⚠️ **VDA5050／ROS／RMF 不是同一種東西**。正確的堆疊是兩層：
+>
+> ```
+> 語意層   VDA5050 schema      rmf_*_msgs        HTTP JSON
+> 傳輸層   MQTT                ROS 2 / DDS       TCP
+> ```
+>
+> VDA5050 對應的不是 ROS，是 `rmf_*_msgs`（都在定義「訊息長什麼樣」）；
+> MQTT 對應的才是 DDS（都在回答「怎麼送」）。
+> **Open-RMF 是一個系統，不是介面**——就像不能說「PostgreSQL 是一種 SQL」。
 
-| # | 類別 | 誰負責 | 介面 | 層級 |
+### ⭐ 介面有三種狀態，不是「有」或「沒有」
+
+| 狀態 | 意義 | 例子 | 我能做什麼 |
+|---|---|---|---|
+| ⭐ **業界標準介面** | 有規範文件、換廠商不用改 | VDA5050 `order` / `state` | **實作它**——最有價值的位置 |
+| **框架專屬介面** | 看得見的 ROS topic，但只在 RMF 生態內有意義 | `task_api_requests`、`bid_notice` | 可以用，但綁定框架 |
+| **無介面（封裝）** | 在別人的行程內部跑，外面收不到訊息 | 成本計算、路徑規劃、充電決策 | **碰不到，也不該碰** |
+
+這個區分很重要——**中游有一大半的行為沒有對外介面**。它們在架構圖上是空的、在我的程式碼裡也是空的，看起來像被跳過，實際上是**被正確委派**。
+
+### 行為由「角色」執行，不是由「層」執行
+
+層裡面住著角色，行為由角色做。混用兩者是常見的描述錯誤。
+
+| 角色 | 層 | 本專案由誰扮演 |
+|---|---|---|
+| **派工決策者 Allocator** | 中游 | **`dispatcher.py`（我）** |
+| 觀測者 Observer | 中游 | `shadow_bidder.py`、KPI（我） |
+| 車隊控制者 Fleet Controller | 中游 | RMF `fleet_adapter` |
+| 交通管理者 Traffic Manager | 中游 | `rmf_traffic_schedule` + `blockade_node` |
+| 設施管理者 Facility Manager | 中游 | door／lift supervisor |
+| **車輛閘道 Vehicle Gateway** | 中↔下游 | **`vda5050_bridge`（我）** |
+| **車輛代理 Vehicle Agent** | 下游 | **`vda5050_vehicle`（我）** |
+| 車輛本體 Vehicle | 下游 | Gazebo `slotcar` |
+
+### 涵蓋率：完整規範有 98 種行為，我實作了 33 種
+
+把 VDA5050 官方 schema、Open-RMF 的 ROS 訊息與服務、`rmf_api_msgs` 的 49 個 API schema
+逐一比對後，這條鏈上可辨識的行為共 **98 種**，分成八個歸屬：
+
+| 歸屬 | 全部 | ✅ 已做 | ⚠️ 部分 | ❌ 未做／委派 |
+|---|---:|---:|---:|---:|
+| **車輛** | 26 | **8** | 3 | 15 |
+| **任務** | 23 | **5** | 3 | 15 |
+| 交通與資源 | 14 | 0 | 1 | 13 |
+| 生命週期與健康 | 11 | 0 | 0 | 11 |
+| 人工介入與緊急 | 9 | **2** | 0 | 7 |
+| **觀測與治理** | 6 | **4** | 0 | 2 |
+| 能源 | 5 | **2** | 0 | 3 |
+| **連線與異常** | 4 | **4** | 0 | 0 |
+| **合計** | **98** | **25** | **8** | **65** |
+
+**「未做」的 65 種裡，絕大多數是刻意委派給 RMF**（路徑規劃、交通協商、門電梯、
+任務生命週期控制），少數是規範的完整範圍（29 個預定義動作、8 個 topic 中的 5 個）——
+單一廠商也很少全做。
+
+### 我實作的 33 種行為
+
+| 歸屬 | 行為 | 角色 | 介面 | 狀態 |
 |---|---|---|---|---|
-| 1 | **指派**（任務層） | 上位系統 | ROS `task_api_requests`、`rmf_task/bid_*` | 上游↔中游 |
-| 2 | **交通與資源**（路權層） | RMF | ROS `mutex_group_*`、`lane_closure_*`、`door/lift_requests`、`charging_assignments` | 中游內部 |
-| 3 | **車輛**（執行層） | 車輛／廠商 | **VDA5050 over MQTT** | 中游↔下游 |
-| 4 | **連線與異常**（系統層） | 兩端 | VDA5050 `connection` + `state.errors` | 中游↔下游 |
+| 任務 | **任務分配** | **Allocator（我）** | ROS `task_api_requests` | ✅ **fifo／nearest** |
+| 任務 | 排序／佇列 | Allocator（我） | 無（本地狀態） | ✅ FIFO 佇列 |
+| 任務 | **承諾時機** | Allocator（架構選擇） | 無（設計決定） | ✅ **實測發現的軸線** |
+| 任務 | 執行追蹤 | Allocator（我） | ROS `fleet_states` 的 `task_id` 轉換 | ✅ |
+| 任務 | 完成判定 | Vehicle Gateway（我） | ⭐ `state.lastNodeId == cmd_N` | ✅ **規則是我定的** |
+| 任務 | 訂單產生 | Order Source | REST／gRPC・無標準 | ⚠️ 由 dispatcher 模擬 |
+| 任務 | 拒絕與重排 | Fleet Controller → Allocator | ROS `task_api_responses` | ⚠️ 只記逾時，**沒有重派** |
+| 任務 | 任務型別 | Allocator（我） | `TaskType` 定義 6 種 | ⚠️ **只用 `PATROL`** |
+| 交通與資源 | 停靠（docking） | Vehicle Gateway（我） | HTTP `start_task` | ⚠️ 端點有，**如實回報未實作** |
+| **車輛** | **訂單下達** | **Vehicle Gateway（我）** | ⭐ **VDA5050 `order`**／HTTP `navigate` | ✅ |
+| **車輛** | **停車** | **Vehicle Gateway（我）** | HTTP `stop_robot` → 原地 order | ✅ |
+| **車輛** | **狀態回報** | **Vehicle Agent（我）** | ⭐ **VDA5050 `state`** | ✅ |
+| **車輛** | 訂單執行進度 | Vehicle Agent（我） | ⭐ `nodeStates` / `edgeStates`（必要欄位） | ✅ |
+| **車輛** | 立即動作狀態 | Vehicle Agent（我） | ⭐ `instantActionStates`（必要欄位） | ✅ |
+| **車輛** | 安全狀態 | Vehicle Agent（我） | ⭐ `safetyState`（必要欄位） | ✅ |
+| **車輛** | 操作模式 | Vehicle Agent（我） | ⭐ `operatingMode`（7 種） | ✅ |
+| **車輛** | 動作執行 | Vehicle Agent（我） | ⭐ `actionStates`（必要欄位） | ✅ 如實回報 `FAILED` |
+| **車輛** | 訂單更新 | Vehicle Gateway（我） | ⭐ `orderUpdateId` 遞增 | ⚠️ 只做冪等丟棄，**無 base 擴充** |
+| **車輛** | 訂單驗收／拒絕 | Vehicle Agent（我） | ⭐ 規範 10 種拒絕條件 | ⚠️ **實作 2 種** |
+| **車輛** | 車輛模式回報 | Vehicle → Agent（我） | `RobotMode` 10 種 | ⚠️ **映射 5 種** |
+| 能源 | 電量回報 | Vehicle Agent（我） | ⭐ `powerSupply.stateOfCharge` | ✅ 實驗中恆為 100 |
+| 能源 | 充電回報 | Vehicle Agent（我） | ⭐ `powerSupply.charging` | ✅ 實驗中恆為 `false` |
+| **連線與異常** | **連線管理** | **Vehicle Agent（我）** | ⭐ **VDA5050 `connection`**（4 態） | ✅ 實作 3 態 |
+| **連線與異常** | 異常斷線偵測 | Vehicle Agent（我） | ⭐ MQTT Last Will → `CONNECTION_BROKEN` | ✅ **實測通過** |
+| **連線與異常** | 錯誤回報 | Vehicle Agent（我） | ⭐ `state.errors[].errorType` | ✅ |
+| **連線與異常** | 重新規劃請求 | Vehicle Gateway（我） | HTTP `status` 的 `replan` | ✅ 8 種錯誤觸發 |
+| 人工介入 | **teleop 切換** | Vehicle Gateway（我） | HTTP `toggle_action` | ✅ ⚠️ 擋不掉 adapter 主動發的指令 |
+| 人工介入 | 緊急停止 | Vehicle | ⭐ `safetyState.activeEmergencyStop` | ✅ 有回報（恆 `NONE`） |
+| **觀測與治理** | **決策理由紀錄** | **Observer（我）** | 無標準・自訂 JSON Lines | ✅ **強項** |
+| **觀測與治理** | **KPI 量測** | **Observer（我）** | 無標準・自訂 JSON Lines | ✅ 周轉／等待／尾端／`dist_penalty` |
+| **觀測與治理** | **資料版本標記** | **Observer（我）** | 無標準・`code_sha` 內容雜湊 | ✅ 不同版自動排除 |
+| **觀測與治理** | 投標旁聽 | Observer（我） | ROS `bid_notice` / `bid_response` | ✅ M3a |
 
-> ⚠️ **最常見的誤解是把 1 和 3 對調。** VDA5050 是**車輛介面**，不是派工介面。
+> ⚠️ **最常見的誤解**：以為 VDA5050 是派工介面。**它是車輛介面**——派工走的是 ROS。
+> ⚠️ **第二常見的誤解**：把整條車輛鏈路算給 RMF。實際上 RMF 只在最上（HTTP `navigate`）
+> 與最下（HTTP `status`）各出現一次，**中間整條 VDA5050 鏈路是自己寫的**。
+
+> **RMF 的拍賣、協商、充電插入是 Open-RMF 的實作選擇，不是業界規範**——
+> 換成 OpenTCS，這三件事的做法完全不同。它們不是「應該做而沒做的事」。
 
 ### 指派行為的六個階段
 
@@ -357,10 +325,14 @@ flowchart TB
 
 **兩個容易誤解的**
 
-- **碰撞不是車輛行為**：RMF 在中游事先協商路權（`Active negotiation` → `Resolved negotiation`）。
-  VDA5050 這層只有「我被擋住了」（`BLOCKED_BY_OTHER_ROBOT`）這種**回報**。
-- **充電是跨層的**：決策在中游（RMF 的 `charging_assignments`），執行在下游，
-  VDA5050 這層只看得到「往充電站的 order」＋ `stateOfCharge` 數字。
+- **碰撞不是車輛行為**：RMF 在中游事先協商路權——實驗 log 裡就看得到
+  `Active negotiation` → `Resolved negotiation`，走的是 `rmf_traffic/negotiation_*`
+  與 `blockade_*`（路權互鎖）。VDA5050 這層只有「我被擋住了」
+  （`BLOCKED_BY_OTHER_ROBOT`）這種**回報**。
+- **充電是跨層的，而且不走 topic**：決策在中游的 `fleet_adapter`，
+  依據**設定檔的門檻**（`recharge_threshold: 0.10`、`recharge_soc: 1.0`、
+  `finishing_request: "park"`）與**導航圖中標記 `is_charger` 的充電站**自行判斷；
+  執行在下游。VDA5050 這層只看得到「往充電站的 order」＋ `stateOfCharge` 數字。
 
 ---
 
@@ -573,6 +545,7 @@ RViz 只剩平面圖、車輛圖示消失時，有兩種完全不同的原因：
 
 ```
 amr-fms-fifo-dispatcher/
+├── docs/                          README 用的圖與示範動畫
 ├── src/fifo_dispatcher/           ROS 2 套件（ament_python）
 │   ├── fifo_dispatcher/
 │   │   ├── dispatcher.py          上位系統派工器
