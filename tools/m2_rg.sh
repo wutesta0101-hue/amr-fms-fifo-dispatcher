@@ -19,6 +19,32 @@ LOG="/tmp/m2exp_${POLICY}_r${ROUND}.jsonl"
 BRIDGE_LOG="/tmp/m2bridge_${POLICY}_r${ROUND}.jsonl"
 FM=http://127.0.0.1:22011/open-rmf/rmf_demos_fm
 
+# ── D8 修正（2026/08/16）：外層重跑不再覆蓋前一次的故障現場 ────────────
+# m2_rerun.sh 在 completed < 8 時會用**同樣的 policy/round** 再呼叫本腳本，
+# 此時內層的 attempt 歸 1，於是：
+#   ① launch log 被 `>` 覆蓋
+#   ② 結果檔被 `rm -f` 刪掉
+#   ③ bridge 紀錄被 `cp` 蓋掉
+# 三份證據同時消失。2026/08/13 就這樣弄丟了一次 Read timed out 風暴的完整 log，
+# 該故障至今成因未明（手冊故障 F）。
+#
+# 修法：每次執行有自己的 RUN_ID；舊檔在被覆蓋前先搬進 attic。
+#
+# ⚠️ attic 刻意放在**子目錄**：m2_rerun.sh 與 m2_ra3.sh 都用
+#    `/tmp/m2exp_*_r*.jsonl` 這個 glob 列出結果，舊檔若留在 /tmp 同一層，
+#    會被當成正式結果一併列出，反而製造新的誤判。
+RUN_ID="$(date +%m%d_%H%M%S)"
+ATTIC="/tmp/m2_attic"
+mkdir -p "${ATTIC}"
+
+# 把即將被覆蓋的舊檔搬走。名字帶的是「搬走當下」的 RUN_ID，
+# 因此同一組重跑多次也不會互相蓋掉。檔案不存在就什麼都不做。
+stash() {
+  [ -f "$1" ] || return 0
+  mv "$1" "${ATTIC}/$(basename "${1%.jsonl}")_${RUN_ID}.jsonl"
+  echo "[$(date +%H:%M:%S)] D8：舊檔已保留 → ${ATTIC}/$(basename "${1%.jsonl}")_${RUN_ID}.jsonl"
+}
+
 source /opt/ros/humble/setup.bash
 source /root/rmf_ws/install/setup.bash
 
@@ -49,7 +75,7 @@ READY=0
 for attempt in 1 2; do
   echo "[$(date +%H:%M:%S)] 啟動 VDA5050 場景（第 ${attempt} 次嘗試）…"
   (setsid ros2 launch fifo_dispatcher office_vda5050.launch.xml \
-      > "/tmp/m2launch_${POLICY}_r${ROUND}_a${attempt}.log" 2>&1 &)
+      > "/tmp/m2launch_${POLICY}_r${ROUND}_${RUN_ID}_a${attempt}.log" 2>&1 &)
 
   # 就緒判準：兩台車都回報位置且電量 100%（證明是全新場景）。
   # ⚠️ 這裡**不用** `ros2 topic echo /fleet_states --once`。
@@ -105,7 +131,9 @@ echo "[$(date +%H:%M:%S)] 鏈路正常（vehicle ${VEH} 個、adapter 1 個、MQ
 sleep 15   # 讓 dispatcher 先觀察一段時間，idle_since 才有意義
 
 # 4) 跑派工器（參數與 M3b 完全相同）
-rm -f "${LOG}"
+# D8：前一次（失敗）的結果檔不直接刪，先搬進 attic 留作故障現場
+stash "${LOG}"
+stash "${BRIDGE_LOG}"
 : > /tmp/vda5050_bridge.jsonl      # 清空，讓本組的 order 紀錄獨立可數
 DURATION=$(python3 -c "print(int(${COUNT} * ${INTERVAL} + 150))")
 timeout "${DURATION}" ros2 run fifo_dispatcher dispatcher --ros-args \
@@ -121,3 +149,4 @@ echo "[$(date +%H:%M:%S)] === 組別 ${POLICY} 輪次 ${ROUND} 結束 ==="
 echo "  派工紀錄 ${LOG}：$(wc -l < "${LOG}") 筆"
 echo "  VDA5050 order：$(grep -c order_sent "${BRIDGE_LOG}" 2>/dev/null) 張"
 echo "  車輛回報的錯誤：$(grep -c order_rejected "${BRIDGE_LOG}" 2>/dev/null) 次"
+echo "  本次 launch log：/tmp/m2launch_${POLICY}_r${ROUND}_${RUN_ID}_a*.log"

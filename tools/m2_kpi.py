@@ -12,6 +12,7 @@
 # 2026/08/13 起：紀錄檔第一行是版本標記（run_started），本腳本會抽掉它再統計，
 # 並在表格與「資料可比性」一節顯示 code_sha——這是驗收條件 5。
 # 原始版本在 /tmp（重開機會消失），本檔是收進 repo 的正本。
+import glob
 import json
 import os
 import statistics as st
@@ -27,6 +28,9 @@ OLD_DIR = os.environ.get(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                  'notes', 'data'))
 NEW_DIR = os.environ.get('M2_DATA_DIR', '/tmp')
+# 車端紀錄（order_rejected 的唯一來源，見 reject_stats）
+VEHICLE_GLOB = os.environ.get('M2_VEHICLE_GLOB',
+                              '/tmp/vda5050_tinyRobot*.jsonl')
 
 
 def load(path):
@@ -48,6 +52,9 @@ def load(path):
         bal[r['robot']] = bal.get(r['robot'], 0) + 1
     return {
         'n': len(rows), 'done': len(done), 'sha': sha,
+        # 每筆任務的原始值也帶出來：畫分布圖要用（experiments/policy_report.py），
+        # 平均與最大值看不出「尾端換平均」這種形狀上的差別
+        'turns': turn, 'waits': wait,
         'turn_mean': st.mean(turn), 'turn_max': max(turn),
         'wait_mean': st.mean(wait), 'wait_max': max(wait),
         'wait_sd': st.pstdev(wait),
@@ -128,62 +135,130 @@ def comparable_only(data):
     return kept, ref, dropped
 
 
-old = {(p, r): load(f'{OLD_DIR}/exp_{p}_r{r}.jsonl')
-       for p in POLICIES for r in ROUNDS}
-new = {(p, r): load(f'{NEW_DIR}/m2exp_{p}_r{r}.jsonl')
-       for p in POLICIES for r in ROUNDS}
+METRICS = [('turn_mean', '平均周轉'), ('turn_max', '最大周轉'),
+           ('wait_mean', '平均等待'), ('wait_max', '最大等待')]
 
-table('M3b 基準：rmf_demos 的 fleet_manager', old)
-table('M2 重跑：我們的 vda5050_bridge + vda5050_vehicle', new)
-comparability(new)
 
-new_cmp, ref_sha, dropped = comparable_only(new)
+# 12 項比較的判定，回傳結構化結果供本檔列印、也供 experiments/kpi_report.py 產圖用。
+# 兩邊各算一次就會各自演化（原則 16），所以判準只寫在這裡一份。
+def compare(old, new_cmp):
+    out = []
+    for key, label in METRICS:
+        for p in POLICIES:
+            o, n = mean_of(old, p, key), mean_of(new_cmp, p, key)
+            if o is None or n is None:
+                out.append({'key': key, 'label': label, 'policy': p,
+                            'old': None, 'new': None})
+                continue
+            so = spread_of(old, p, key) or 0.0
+            sn = spread_of(new_cmp, p, key)
+            # M2 只有單輪時，雜訊底線只能取 M3b 的跨輪變異——
+            # 這正是「先跑 3 組」的前提（M3b 變異已知），但結論要標明是單輪
+            single = sn is None
+            noise = so + (sn or 0.0)
+            diff = n - o
+            if abs(diff) <= noise:
+                verdict = '雜訊內，未劣化'
+            elif diff > 0:
+                verdict = f'⚠️ 變差 {diff:.1f}s（超出雜訊）'
+            else:
+                verdict = f'變好 {-diff:.1f}s（超出雜訊）'
+            out.append({'key': key, 'label': label, 'policy': p,
+                        'old': o, 'new': n, 'diff': diff, 'noise': noise,
+                        'single': single, 'verdict': verdict})
+    return out
 
-print('\n=== 換掉介面之後，KPI 有沒有劣化？ ===')
-print(f'只採用版本 {ref_sha} 的資料'
-      + (f'；已排除 {", ".join(dropped)}（版本不符或無標記）' if dropped else ''))
-print('判準：差距必須大於「兩批各自的跨輪變異之和」，才算真的有差別')
-print(f"{'指標':<12}{'策略':<9}{'M3b':>9}{'M2':>9}{'差距':>9}"
-      f"{'雜訊底線':>10}  判定")
-print('-' * 70)
-verdicts = []
-for key, label in [('turn_mean', '平均周轉'), ('turn_max', '最大周轉'),
-                   ('wait_mean', '平均等待'), ('wait_max', '最大等待')]:
+
+# bridge 端的 order 統計：發出幾張、完成幾張。
+# 「發出 > 完成」是正常的：`_send_order` 會直接覆寫 r['cmd']，
+# 被後續指令取代的那一張永遠不會寫出 cmd_completed。
+def bridge_stats(data_dir):
+    out = []
     for p in POLICIES:
-        o, n = mean_of(old, p, key), mean_of(new_cmp, p, key)
-        if o is None or n is None:
-            print(f'{label:<12}{p:<9}   （缺可比的資料，無法比較）')
-            continue
-        so = spread_of(old, p, key) or 0.0
-        sn = spread_of(new_cmp, p, key)
-        # M2 只有單輪時，雜訊底線只能取 M3b 的跨輪變異——
-        # 這正是「先跑 3 組」的前提（M3b 變異已知），但結論要標明是單輪
-        single = sn is None
-        noise = so + (sn or 0.0)
-        diff = n - o
-        if abs(diff) <= noise:
-            verdict = '雜訊內，未劣化'
-        elif diff > 0:
-            verdict = f'⚠️ 變差 {diff:.1f}s（超出雜訊）'
-        else:
-            verdict = f'變好 {-diff:.1f}s（超出雜訊）'
-        verdicts.append((label, p, verdict))
-        print(f'{label:<12}{p:<9}{o:>9.1f}{n:>9.1f}{diff:>+9.1f}'
-              f'{noise:>10.1f}  {verdict}{"（單輪）" if single else ""}')
+        for r in ROUNDS:
+            path = f'{data_dir}/m2bridge_{p}_r{r}.jsonl'
+            if not os.path.isfile(path):
+                continue
+            rows = [json.loads(l) for l in open(path, encoding='utf-8')
+                    if l.strip()]
+            out.append({
+                'policy': p, 'round': r,
+                'sent': sum(1 for x in rows if x.get('event') == 'order_sent'),
+                'done': sum(1 for x in rows if x.get('event') == 'cmd_completed'),
+            })
+    return out
 
-print('\n=== VDA5050 側的統計（本次特有）===')
-for p in POLICIES:
-    for r in ROUNDS:
-        path = f'/tmp/m2bridge_{p}_r{r}.jsonl'
-        if not os.path.isfile(path):
-            continue
-        rows = [json.loads(l) for l in open(path, encoding='utf-8') if l.strip()]
-        sent = sum(1 for x in rows if x.get('event') == 'order_sent')
-        done = sum(1 for x in rows if x.get('event') == 'cmd_completed')
-        rej = sum(1 for x in rows if x.get('event') == 'order_rejected')
-        print(f'  {p:<9}r{r}  order 發出 {sent:>4}｜完成 {done:>4}｜被拒 {rej:>3}')
 
-bad = [v for v in verdicts if v[2].startswith('⚠️')]
-print(f'\n總結：{len(bad)} 項超出雜訊變差' if bad else '\n總結：所有指標都在雜訊內，換掉介面未造成劣化')
-for label, p, v in bad:
-    print(f'  - {label} / {p}：{v}')
+# order 被拒幾次。
+# ⚠️ `order_rejected` 只由 `vda5050_vehicle.py` 寫進**車端**紀錄，bridge 從不寫。
+#    在 bridge 紀錄裡數這個事件永遠得到 0——那不是「沒有被拒」，是量錯了檔案。
+#    這正是原則 7 講的代理指標：沒有車端紀錄就回 None，讓呼叫端說「無法判定」，
+#    不要拿一個結構上不可能非零的計數去支持「零拒絕」的結論。
+def reject_stats(vehicle_glob):
+    files = sorted(glob.glob(vehicle_glob))
+    if not files:
+        return None
+    recv = rej = 0
+    for path in files:
+        for line in open(path, encoding='utf-8'):
+            if not line.strip():
+                continue
+            ev = json.loads(line).get('event')
+            recv += ev == 'order_received'
+            rej += ev == 'order_rejected'
+    return {'files': len(files), 'received': recv, 'rejected': rej}
+
+
+def load_all():
+    old = {(p, r): load(f'{OLD_DIR}/exp_{p}_r{r}.jsonl')
+           for p in POLICIES for r in ROUNDS}
+    new = {(p, r): load(f'{NEW_DIR}/m2exp_{p}_r{r}.jsonl')
+           for p in POLICIES for r in ROUNDS}
+    return old, new
+
+
+def main():
+    old, new = load_all()
+    table('M3b 基準：rmf_demos 的 fleet_manager', old)
+    table('M2 重跑：我們的 vda5050_bridge + vda5050_vehicle', new)
+    comparability(new)
+
+    new_cmp, ref_sha, dropped = comparable_only(new)
+
+    print('\n=== 換掉介面之後，KPI 有沒有劣化？ ===')
+    print(f'只採用版本 {ref_sha} 的資料'
+          + (f'；已排除 {", ".join(dropped)}（版本不符或無標記）' if dropped else ''))
+    print('判準：差距必須大於「兩批各自的跨輪變異之和」，才算真的有差別')
+    print(f"{'指標':<12}{'策略':<9}{'M3b':>9}{'M2':>9}{'差距':>9}"
+          f"{'雜訊底線':>10}  判定")
+    print('-' * 70)
+    rows = compare(old, new_cmp)
+    for c in rows:
+        if c['old'] is None:
+            print(f"{c['label']:<12}{c['policy']:<9}   （缺可比的資料，無法比較）")
+            continue
+        print(f"{c['label']:<12}{c['policy']:<9}{c['old']:>9.1f}{c['new']:>9.1f}"
+              f"{c['diff']:>+9.1f}{c['noise']:>10.1f}  {c['verdict']}"
+              f"{'（單輪）' if c['single'] else ''}")
+
+    print('\n=== VDA5050 側的統計（本次特有）===')
+    for b in bridge_stats(NEW_DIR):
+        print(f"  {b['policy']:<9}r{b['round']}  order 發出 {b['sent']:>4}"
+              f"｜完成 {b['done']:>4}")
+    rej = reject_stats(VEHICLE_GLOB)
+    if rej is None:
+        print(f'  被拒次數：⚠️ 無法判定——這批沒有留下車端紀錄'
+              f'（{VEHICLE_GLOB}）。order_rejected 只寫在車端。')
+    else:
+        print(f"  被拒次數：{rej['rejected']}（車端 {rej['files']} 個檔、"
+              f"order_received {rej['received']} 筆）")
+
+    bad = [c for c in rows if c.get('verdict', '').startswith('⚠️')]
+    print(f'\n總結：{len(bad)} 項超出雜訊變差' if bad
+          else '\n總結：所有指標都在雜訊內，換掉介面未造成劣化')
+    for c in bad:
+        print(f"  - {c['label']} / {c['policy']}：{c['verdict']}")
+
+
+if __name__ == '__main__':
+    main()

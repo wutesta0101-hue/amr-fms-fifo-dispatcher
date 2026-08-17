@@ -46,7 +46,11 @@ for spec in "$@"; do
     fi
     echo "✗ ${policy} r${round}：只有 ${DONE}/8 完成（多半是 fleet_adapter 中途死亡，故障 E）"
     if [ "${attempt}" = "2" ]; then
-      echo "✗✗ 重試後仍失敗，放棄本組；請查 /tmp/m2launch_${policy}_r${round}_a*.log"
+      # D8 修正後，每次執行的 launch log 都帶自己的時間戳，不再互相覆蓋；
+      # 前一次的結果檔也保留在 attic，兩次的現場都查得到。
+      echo "✗✗ 重試後仍失敗，放棄本組。現場："
+      echo "   launch log：/tmp/m2launch_${policy}_r${round}_*_a*.log"
+      echo "   前次結果檔：/tmp/m2_attic/m2exp_${policy}_r${round}_*.jsonl"
     else
       echo "→ 重試一次"
     fi
