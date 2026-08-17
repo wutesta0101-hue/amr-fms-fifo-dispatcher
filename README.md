@@ -439,7 +439,7 @@ bash tools/verify_chain.sh
 
 ### 4. 資料可比性：版本標記
 
-每個紀錄檔第一行是程式碼內容雜湊：
+每個紀錄檔第一行採用程式碼內容雜湊，分析腳本會自動排除版本不一致或無標記的資料：
 
 ```json
 {"event":"run_started","policy":"fifo","code_sha":"64e03d438924",
@@ -447,7 +447,6 @@ bash tools/verify_chain.sh
  "code_dir":"/root/rmf_ws/install/..."}
 ```
 
-分析腳本會自動排除版本不一致或無標記的資料。
 
 ### 5. KPI 判準
 
