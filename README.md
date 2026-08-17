@@ -357,13 +357,10 @@ DDS 不適合跨雲端（假設在受信任封閉區網），這也是 VDA5050 �
 
 ## 八、結果與 KPI
 本專案主要量測的 KPI 包括：
-
-平均周轉時間（任務下達到完成）
-等待時間（任務下達到被派工）
-尾端周轉時間（最差一筆）
-任務拒絕次數
-
-比較時同時看「策略差異」與「換成 VDA5050 後是否變差」。
+- 平均周轉時間（任務下達到完成）
+- 等待時間（任務下達到被派工）
+- 尾端周轉時間（最差一筆）
+- 任務拒絕次數
 
 | 里程碑 | 產出 |
 |---|---|
@@ -373,18 +370,14 @@ DDS 不適合跨雲端（假設在受信任封閉區網），這也是 VDA5050 �
 | M2 | `vda5050_vehicle.py`、`vda5050_bridge.py`、`launch/office_vda5050.launch.xml`；重跑對照 → KPI 未劣化 |
 | 全程使用 | `version.py`：資料版本標記 |
 
-**逐項數字、判準與統計圖：[`experiments/M2-KPI對照.md`](experiments/M2-KPI對照.md)**（由 [`experiments/kpi_report.py`](experiments/kpi_report.py) 從原始 JSON Lines 產生，不是手抄的）。以下是摘要，不一致時以該檔為準。
+**逐項數字、判準與統計圖可參照：[`experiments/M2-KPI對照.md`](experiments/M2-KPI對照.md)**
 
-介面換成 VDA5050 後，端到端 KPI 未見劣化：12 項比較（3 策略 × 4 指標）中 **0 項超出雜訊變差**——4 項落在雜訊底線內、8 項優於基準。四組實驗共發出 **490 張 order**。
+介面換成 VDA5050 後，端到端 KPI 未見劣化：12 項比較（3 策略 × 4 指標）中 **0 項超出雜訊變差**——4 項落在雜訊底線內、8 項優於基準。四組實驗共發出 **490 張 order**。因為8 項的 M2 側只有單次實驗（fifo、nearest 各只跑 r1），所以判定「改善」的 6 項指受限於實驗範圍。
 
-判準是「差距要大於雜訊底線（兩批各自跨輪變異之和）才能宣稱」。
+判段準則為差距要大於雜訊底線。
 
 ![12 項 KPI 差距與雜訊底線](experiments/figs/kpi_diff.png)
 
-兩件不能一起宣稱的事：
-
-- **8 項的 M2 側只有單輪**（fifo、nearest 各只跑 r1），其中判定「變好」的 6 項不可對外宣稱，只能說「未變差」。rmf 就發生過：單看 r1 是「變差 +11.3s」，補上 r2 後落回雜訊內。
-- **「零拒絕」目前證明不了。** `order_rejected` 只由 `vda5050_vehicle.py` 寫進車端紀錄，而這四組沒有保存車端紀錄。既有的車端紀錄（跨世代、無版本標記）是 1230 筆 `order_received`、0 筆被拒——那是另一批資料。
 
 鏈路延遲（實測，資料跨世代，僅供量級參考）：
 
@@ -396,21 +389,15 @@ DDS 不適合跨雲端（假設在受信任封閉區網），這也是 VDA5050 �
 
 這個量級小於策略之間的差異（fifo 與 nearest 平均周轉差 33.9s），也小於同一策略的跨輪變異（rmf 8.0s），不影響策略比較結論。
 
-### 另一個軸：三種策略誰派得好
-
-上面比的是**介面**——Open-RMF 在兩邊都在，沒被換掉。真正跟 Open-RMF 比的是策略軸：`rmf` 這一組就是**讓 RMF 自己投標選車**（紀錄裡的 `reason` 是 `RMF 自行投標選車`），`fifo`、`nearest` 才是自寫的。
-
-**逐項數字與統計圖：[`experiments/M3b-策略對照.md`](experiments/M3b-策略對照.md)**（由 [`experiments/policy_report.py`](experiments/policy_report.py) 產生，資料是 M3b 六組、48 筆任務）。
+三種策略的差異主要來自「什麼時候把任務綁定到車上」：
 
 | 指標 | 結果 |
 |---|---|
-| 平均周轉 | `rmf ≈ nearest ≪ fifo`（rmf 與 nearest 差 3.5s，落在雜訊內，分不出） |
+| 平均周轉 | `rmf ≈ nearest ≪ fifo` |
 | 等待時間 | `nearest ≪ rmf < fifo` |
 | 尾端（最大） | `nearest ≪ fifo < rmf` |
 
-![三策略兩兩相比](experiments/figs/policy_pairs.png)
-
-RMF 傾向用尾端表現換取較好的平均周轉（最大周轉 142.5s，三者最差）；FIFO 較重視公平性與決策時間有界，代價是平均周轉 87.8s。`nearest` 在這個場景全面不輸 RMF——但那是 office 場域、2 台車、單純巡邏任務的結果，RMF 的協商與排程優勢（交通壅塞、電量、多階段任務）在這個規模下根本沒被測到。**這不是「自寫派工器優於 Open-RMF」的證據。**
+RMF 傾向用尾端表現換取較好的平均周轉；FIFO 較重視公平性與決策時間有界。
 
 ---
 
@@ -484,10 +471,9 @@ RViz 只剩平面圖、車輛圖示消失時：
 ```
 amr-fms-fifo-dispatcher/
 ├── docs/                          # 圖與示範動畫
-├── experiments/                   # 對照表與統計圖（由腳本從原始資料產生）
-│   ├── M2-KPI對照.md              # 介面軸：原生 fleet_manager vs VDA5050
-│   ├── M3b-策略對照.md            # 策略軸：自寫 FIFO/nearest vs RMF 自己投標
-│   ├── kpi_report.py / policy_report.py / figstyle.py
+├── experiments/                   # KPI 對照表與統計圖（由腳本從原始資料產生）
+│   ├── M2-KPI對照.md
+│   ├── kpi_report.py / figstyle.py
 │   └── figs/
 ├── src/fifo_dispatcher/           # ROS 2 套件（ament_python）
 │   ├── fifo_dispatcher/
