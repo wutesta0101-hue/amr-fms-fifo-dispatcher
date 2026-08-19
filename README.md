@@ -1,6 +1,6 @@
 # amr-fms-fifo-dispatcher
 
-把自寫的派工器接進 Open-RMF，並用 VDA5050 3.0 取代廠商私有 API，量測換介面後 KPI 是否劣化。
+嘗試將自己寫的派工器接進 Open-RMF，並用 VDA5050 3.0 取代廠商私有 API，量測換介面後 KPI 是否劣化。
 
 環境：WSL2 / Ubuntu 22.04 / ROS 2 Humble / Open-RMF `rmf_demos` 2.0.4 / Ignition Fortress
 
